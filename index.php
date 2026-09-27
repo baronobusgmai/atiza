@@ -121,7 +121,7 @@ usort($todos, function ($a, $b) use ($hoy) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Atiza Culto AMB</title>
+<title>Atiza Barcelona Events</title>
 <style>
 :root {
   --bg:#07080c; --panel:#12141a; --border:#252a35; --text:#eef2f7;
