@@ -5,6 +5,14 @@
  */
 declare(strict_types=1);
 
+function atiza_len(string $s): int {
+    return function_exists("mb_strlen") ? atiza_len($s, "UTF-8") : strlen($s);
+}
+function atiza_lower(string $s): string {
+    return function_exists("mb_strtolower") ? atiza_lower($s) : strtolower($s);
+}
+
+
 $ROOT = dirname(__DIR__);
 $DATA = $ROOT . '/data/conciertos.json';
 $LEGACY = $ROOT . '/conciertos.json';
@@ -27,9 +35,9 @@ function load_json(string $path): array {
 }
 
 function event_key(array $e): string {
-    $t = mb_strtolower(trim($e['titulo'] ?? $e['artista'] ?? ''));
+    $t = atiza_lower(trim($e['titulo'] ?? $e['artista'] ?? ''));
     $f = trim($e['fecha'] ?? '');
-    $l = mb_strtolower(trim($e['lugar'] ?? ''));
+    $l = atiza_lower(trim($e['lugar'] ?? ''));
     return $f . '|' . $t . '|' . $l;
 }
 
@@ -103,7 +111,7 @@ function source_concerts_cat(): array {
                 $fecha = $row[1];
                 $titulo = trim(html_entity_decode(strip_tags($row[3]), ENT_QUOTES, 'UTF-8'));
                 $titulo = preg_replace('/\s+/', ' ', $titulo);
-                if (mb_strlen($titulo) < 3 || mb_strlen($titulo) > 90) continue;
+                if (atiza_len($titulo) < 3 || atiza_len($titulo) > 90) continue;
                 if (preg_match('/^(lunes|martes|miércoles|jueves|viernes|sábado|domingo|enero|febrero)/iu', $titulo)) continue;
                 $out[] = norm_event([
                     'fecha' => $fecha,
