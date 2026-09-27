@@ -1,0 +1,8 @@
+[
+  {"fecha":"2026-09-08","hora":"18:00","titulo":"IA y autoría · mesa redonda","lugar":"Hangar","ciudad":"Barcelona","genero":"Debate","nota":"Gratis","imagen":"","url":"","critica":"Pocas respuestas fáciles, buen nivel.","opinion":"Necesario."},
+  {"fecha":"2026-09-19","hora":"19:30","titulo":"Instalación · sensores y cuerpo","lugar":"Sónar+D","ciudad":"Barcelona","genero":"Instalación","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-09-26","hora":"17:00","titulo":"Taller · electrónica basura","lugar":"Makespace","ciudad":"Barcelona","genero":"Taller","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-10-02","hora":"20:00","titulo":"Realidad mixta · escena viva","lugar":"IDEAL Centre","ciudad":"Barcelona","genero":"XR","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-10-18","hora":"11:00","titulo":"Bioarte · cultivos visibles","lugar":"CosmoCaixa","ciudad":"Barcelona","genero":"Bioarte","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-06-12","hora":"16:00","titulo":"Hackathon cultural","lugar":"Mobile World Centre","ciudad":"Barcelona","genero":"Hackathon","nota":"","imagen":"","url":"","critica":"Prototipos en 48h.","opinion":"Agotador y útil."}
+]

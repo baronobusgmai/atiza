@@ -1,0 +1,9 @@
+[
+  {"fecha":"2026-09-12","hora":"20:00","titulo":"Hamlet · Teatre Lliure","lugar":"Teatre Lliure","ciudad":"Barcelona","genero":"Teatro","nota":"","imagen":"","url":"","critica":"Montaje sobrio, texto intacto.","opinion":"Clásico bien defendido."},
+  {"fecha":"2026-09-20","hora":"19:30","titulo":"Flamenco raro · Rocío Molina","lugar":"Mercat de les Flors","ciudad":"Barcelona","genero":"Danza","nota":"","imagen":"","url":"","critica":"Cuerpo y riesgo constante.","opinion":"De lo más vivo de la danza actual."},
+  {"fecha":"2026-09-26","hora":"21:00","titulo":"Performance · Cuerpo glitch","lugar":"Hangar","ciudad":"Barcelona","genero":"Performance","nota":"Gratis","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-09-27","hora":"18:00","titulo":"Circo contemporáneo · Circ Cric","lugar":"Plaça Margarida Xirgu","ciudad":"Barcelona","genero":"Circo","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-10-05","hora":"20:30","titulo":"Ópera de bolsillo · La Traviata","lugar":"Gran Teatre del Liceu","ciudad":"Barcelona","genero":"Ópera","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-10-12","hora":"19:00","titulo":"Teatro documento · Fronteras","lugar":"Sala Beckett","ciudad":"Barcelona","genero":"Teatro","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-08-15","hora":"22:00","titulo":"Grec · Compañía X","lugar":"Teatre Grec","ciudad":"Barcelona","genero":"Teatro","nota":"","imagen":"","url":"","critica":"Noche calurosa, público entregado.","opinion":"Verano en Montjuïc."}
+]

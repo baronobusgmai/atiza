@@ -1,0 +1,8 @@
+[
+  {"fecha":"2026-09-11","hora":"18:00","titulo":"Foro · ciudad y ruido","lugar":"Ateneu Barcelonès","ciudad":"Barcelona","genero":"Foro","nota":"Gratis","imagen":"","url":"","critica":"Debate denso, poca demagogia.","opinion":"Para gente curiosa."},
+  {"fecha":"2026-09-24","hora":"19:00","titulo":"Mesa · culturas raras AMB","lugar":"Can Felipa","ciudad":"Barcelona","genero":"Mesa redonda","nota":"Gratis","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-09-26","hora":"17:30","titulo":"Asamblea · espacios okupados culturales","lugar":"Espai no revelado","ciudad":"Barcelona","genero":"Asamblea","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-10-04","hora":"12:00","titulo":"Simposio · archivo y memoria","lugar":"Biblioteca de Catalunya","ciudad":"Barcelona","genero":"Simposio","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-10-30","hora":"20:00","titulo":"Noche de relatos extraños","lugar":"Libreia Gigamesh","ciudad":"Barcelona","genero":"Lectura","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-04-02","hora":"19:00","titulo":"Foro · ética del dataset","lugar":"CCCB","ciudad":"Barcelona","genero":"Foro","nota":"","imagen":"","url":"","critica":"Preguntas incómodas sobre datos.","opinion":"Para no dormir tranquilo."}
+]

@@ -1,0 +1,8 @@
+[
+  {"fecha":"2026-09-09","hora":"19:00","titulo":"Meetup Python BCN","lugar":"Campus Nord UPC","ciudad":"Barcelona","genero":"Meetup","nota":"Gratis","imagen":"","url":"","critica":"Charlas prácticas.","opinion":"Buena comunidad."},
+  {"fecha":"2026-09-21","hora":"10:00","titulo":"Software libre · jornada","lugar":"Canòdrom","ciudad":"Barcelona","genero":"Jornada","nota":"Gratis","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-09-26","hora":"18:30","titulo":"Ciberseguridad para artistas","lugar":"Bit House","ciudad":"Barcelona","genero":"Taller","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-10-07","hora":"19:00","titulo":"Rust · sistemas y audio","lugar":"CoWorking Nou Barris","ciudad":"Barcelona","genero":"Charla","nota":"Gratis","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-10-22","hora":"09:30","titulo":"DevOps cultural · infra escénica","lugar":"Auditori","ciudad":"Barcelona","genero":"Workshop","nota":"","imagen":"","url":"","critica":"","opinion":""},
+  {"fecha":"2026-05-03","hora":"11:00","titulo":"Wikipedia Edit-a-thon arte","lugar":"Biblioteca Jaume Fuster","ciudad":"Barcelona","genero":"Edit-a-thon","nota":"Gratis","imagen":"","url":"","critica":"Más artículos en catalán/castellano.","opinion":"Muy recomendable."}
+]
