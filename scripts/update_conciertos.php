@@ -4,12 +4,14 @@
  * Uso CLI: php update_conciertos.php [--dry-run]
  */
 declare(strict_types=1);
+ini_set('memory_limit', '256M');
+if (date_default_timezone_get() === 'UTC') { @date_default_timezone_set('Europe/Madrid'); }
 
 function atiza_len(string $s): int {
-    return function_exists("mb_strlen") ? atiza_len($s, "UTF-8") : strlen($s);
+    return function_exists("mb_strlen") ? mb_strlen($s, "UTF-8") : strlen($s);
 }
 function atiza_lower(string $s): string {
-    return function_exists("mb_strtolower") ? atiza_lower($s) : strtolower($s);
+    return function_exists("mb_strtolower") ? mb_strtolower($s, "UTF-8") : strtolower($s);
 }
 
 
@@ -22,10 +24,7 @@ $LOG = '/root/atiza-ctrl/logs/fetch_conciertos.log';
 $dry = in_array('--dry-run', $argv ?? [], true);
 
 function logmsg(string $m): void {
-    global $LOG;
-    $line = date('Y-m-d H:i:s') . ' ' . $m . "\n";
-    echo $m . "\n";
-    @file_put_contents($LOG, $line, FILE_APPEND);
+    echo date('Y-m-d H:i:s') . ' ' . $m . "\n";
 }
 
 function load_json(string $path): array {
@@ -59,7 +58,7 @@ function norm_event(array $e): array {
 }
 
 /** HTTP GET simple */
-function http_get(string $url, int $timeout = 20): string {
+function http_get(string $url, int $timeout = 10): string {
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
