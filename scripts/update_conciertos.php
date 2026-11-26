@@ -2,10 +2,21 @@
 /**
  * Atiza — actualización automática de conciertos (Barcelona / AMB)
  * Uso CLI: php update_conciertos.php [--dry-run]
+ *
+ * v2 (nov 2026): se acabó el regex sobre todo el HTML (leía trozos de CSS/JSON como si
+ * fueran conciertos). Ahora: JSON-LD + tarjetas del listado (DOM), validación anti-basura,
+ * horizonte de fechas, filtro AMB y topes de seguridad.
  */
 declare(strict_types=1);
 ini_set('memory_limit', '256M');
 if (date_default_timezone_get() === 'UTC') { @date_default_timezone_set('Europe/Madrid'); }
+
+const HORIZON_DAYS = 75;                 // solo se importan conciertos de los próximos N días
+const MAX_SCRAPED = 400;                 // tope de eventos nuevos por ejecución
+const MAX_PAGES = 8;                     // páginas de listado a recorrer por fuente
+const MAX_HTML_BYTES = 6 * 1024 * 1024;  // tope de descarga por página
+const AMB_RE = '/barcelona|hospitalet|badalona|cornell|prat de llobregat|sant boi|santa coloma|sant adri|esplugues|sant joan desp|sant just|sant feliu|molins de rei|montcada|ripollet|viladecans|gav[aà]|castelldefels|sant vicen|sant cugat|pallej|cervell[oó]|llagosta|tiana|montgat|badia|barber|begues|castellbisbal|papiol/iu';
+const JUNK_RE = '/[\\\\"{}<>]|schema\\.org|timeUnknown|sticky|top-0|border-|__next|className|self\\.__/iu';
 
 function atiza_len(string $s): int {
     return function_exists("mb_strlen") ? mb_strlen($s, "UTF-8") : strlen($s);
@@ -13,7 +24,10 @@ function atiza_len(string $s): int {
 function atiza_lower(string $s): string {
     return function_exists("mb_strtolower") ? mb_strtolower($s, "UTF-8") : strtolower($s);
 }
-
+/** Valor escalar -> string recortado ('' si no es escalar) */
+function sv($v): string {
+    return is_scalar($v) ? trim((string)$v) : '';
+}
 
 $ROOT = dirname(__DIR__);
 $DATA = $ROOT . '/data/conciertos.json';
@@ -34,98 +48,255 @@ function load_json(string $path): array {
 }
 
 function event_key(array $e): string {
-    $t = atiza_lower(trim($e['titulo'] ?? $e['artista'] ?? ''));
-    $f = trim($e['fecha'] ?? '');
-    $l = atiza_lower(trim($e['lugar'] ?? ''));
+    $t = atiza_lower(sv($e['titulo'] ?? $e['artista'] ?? ''));
+    $f = sv($e['fecha'] ?? '');
+    $l = atiza_lower(sv($e['lugar'] ?? ''));
     return $f . '|' . $t . '|' . $l;
 }
 
 function norm_event(array $e): array {
-    $titulo = trim($e['titulo'] ?? $e['artista'] ?? '');
+    $titulo = sv($e['titulo'] ?? $e['artista'] ?? '');
+    $hora = sv($e['hora'] ?? '—');
     return [
-        'fecha'   => trim($e['fecha'] ?? ''),
-        'hora'    => trim($e['hora'] ?? '—') ?: '—',
+        'fecha'   => sv($e['fecha'] ?? ''),
+        'hora'    => $hora !== '' ? $hora : '—',
         'titulo'  => $titulo,
-        'lugar'   => trim($e['lugar'] ?? ''),
-        'ciudad'  => trim($e['ciudad'] ?? 'Barcelona') ?: 'Barcelona',
-        'genero'  => trim($e['genero'] ?? 'Música'),
-        'nota'    => trim($e['nota'] ?? ''),
-        'imagen'  => trim($e['imagen'] ?? ''),
-        'url'     => trim($e['url'] ?? ''),
-        'critica' => trim($e['critica'] ?? ''),
-        'opinion' => trim($e['opinion'] ?? ''),
+        'lugar'   => sv($e['lugar'] ?? ''),
+        'ciudad'  => sv($e['ciudad'] ?? 'Barcelona') ?: 'Barcelona',
+        'genero'  => sv($e['genero'] ?? 'Música'),
+        'nota'    => sv($e['nota'] ?? ''),
+        'imagen'  => sv($e['imagen'] ?? ''),
+        'url'     => sv($e['url'] ?? ''),
+        'critica' => sv($e['critica'] ?? ''),
+        'opinion' => sv($e['opinion'] ?? ''),
     ];
 }
 
-/** HTTP GET simple */
+/** ¿Parece basura de scraping (CSS, JSON, comillas escapadas...)? Un texto vacío no es basura. */
+function is_junk_text(string $s): bool {
+    if ($s === '') return false;
+    if (preg_match(JUNK_RE, $s)) return true;
+    $letters = preg_match_all('/\p{L}/u', $s);
+    return $letters === false || $letters < 2;
+}
+
+function valid_date(string $f): bool {
+    $d = DateTimeImmutable::createFromFormat('!Y-m-d', $f);
+    return $d !== false && $d->format('Y-m-d') === $f;
+}
+
+/** HTTP GET con tope de tamaño: una página enorme no puede disparar la memoria */
 function http_get(string $url, int $timeout = 10): string {
     if (function_exists('curl_init')) {
+        $buf = '';
         $ch = curl_init($url);
         curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
             CURLOPT_TIMEOUT => $timeout,
+            CURLOPT_CONNECTTIMEOUT => 5,
             CURLOPT_USERAGENT => 'AtizaCultoAMB/1.0 (+local; concert-agenda)',
             CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$buf) {
+                $buf .= $data;
+                return strlen($buf) > MAX_HTML_BYTES ? 0 : strlen($data);
+            },
         ]);
-        $body = curl_exec($ch);
+        $ok = curl_exec($ch);
         $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
-        if ($body === false || $code >= 400) return '';
-        return (string)$body;
+        if ($ok === false || $code >= 400) return '';
+        return $buf;
     }
     $ctx = stream_context_create([
         'http' => ['timeout' => $timeout, 'header' => "User-Agent: AtizaCultoAMB/1.0\r\n"],
         'ssl' => ['verify_peer' => true],
     ]);
-    $body = @file_get_contents($url, false, $ctx);
+    $body = @file_get_contents($url, false, $ctx, 0, MAX_HTML_BYTES);
     return $body === false ? '' : $body;
 }
 
-/**
- * Fuente A: página agenda Barcelona en concerts.cat (HTML → regex tolerante)
- * Si falla, no rompe: devuelve [].
- */
-function source_concerts_cat(): array {
-    $urls = [
-        'https://concerts.cat/es/cities/barcelona',
-        'https://concerts.cat/es',
-    ];
+/** "vie, 30 oct" -> "2026-10-30" (el año se deduce: la fecha más cercana a hoy) */
+function es_heading_date(string $t): ?string {
+    static $mm = ['ene' => 1, 'feb' => 2, 'mar' => 3, 'abr' => 4, 'may' => 5, 'jun' => 6,
+                  'jul' => 7, 'ago' => 8, 'sep' => 9, 'set' => 9, 'oct' => 10, 'nov' => 11, 'dic' => 12];
+    if (!preg_match('/(\d{1,2})\s+([a-záéíóú]{3,5})\.?/iu', $t, $m)) return null;
+    $key = substr(strtr(atiza_lower($m[2]), ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u']), 0, 3);
+    if (!isset($mm[$key])) return null;
+    $day = (int)$m[1];
+    $mon = $mm[$key];
+    $today = new DateTimeImmutable('today');
+    $d = DateTimeImmutable::createFromFormat('!Y-n-j', $today->format('Y') . "-$mon-$day");
+    if ($d === false || (int)$d->format('j') !== $day) return null;
+    if ($d < $today->modify('-60 days')) $d = $d->modify('+1 year');
+    elseif ($d > $today->modify('+300 days')) $d = $d->modify('-1 year');
+    return $d->format('Y-m-d');
+}
+
+/** Tarjetas del listado: cada tarjeta = enlace a /es/events/... + hora + título + "Sala/Ciudad" */
+function parse_cards(string $html): array {
     $out = [];
-    foreach ($urls as $url) {
-        $html = http_get($url);
-        if ($html === '') {
-            logmsg("[src] concerts.cat vacío: $url");
+    $prev = libxml_use_internal_errors(true);
+    $dom = new DOMDocument();
+    $ok = $dom->loadHTML('<?xml encoding="UTF-8">' . $html, LIBXML_NOWARNING | LIBXML_NOERROR | LIBXML_COMPACT);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prev);
+    if (!$ok) return [];
+    $xp = new DOMXPath($dom);
+    $evq = './/a[contains(@href,"/es/events/") and not(contains(@href,"/api/"))]';
+    $nodes = $xp->query('//h2 | //a[contains(@href,"/es/events/") and not(contains(@href,"/api/"))]');
+    if ($nodes === false) return [];
+
+    $curDate = null;
+    $seen = [];
+    foreach ($nodes as $n) {
+        if ($n->nodeName === 'h2') {
+            $d = es_heading_date(trim((string)preg_replace('/\s+/u', ' ', $n->textContent)));
+            if ($d !== null) $curDate = $d;
             continue;
         }
-        // Patrones amplios: fecha ISO o d/m/Y cerca de títulos
-        // Enlaces tipo /es/events/... o tarjetas
-        if (preg_match_all(
-            '/(\d{4}-\d{2}-\d{2})[^<]{0,80}?(?:href="([^"]+)")?[^<]{0,120}?([A-ZÁÉÍÓÚÑ0-9][^<]{2,80})/u',
-            $html,
-            $m,
-            PREG_SET_ORDER
-        )) {
-            foreach ($m as $row) {
-                $fecha = $row[1];
-                $titulo = trim(html_entity_decode(strip_tags($row[3]), ENT_QUOTES, 'UTF-8'));
-                $titulo = preg_replace('/\s+/', ' ', $titulo);
-                if (atiza_len($titulo) < 3 || atiza_len($titulo) > 90) continue;
-                if (preg_match('/^(lunes|martes|miércoles|jueves|viernes|sábado|domingo|enero|febrero)/iu', $titulo)) continue;
-                $out[] = norm_event([
-                    'fecha' => $fecha,
-                    'hora' => '—',
-                    'titulo' => $titulo,
-                    'lugar' => 'Barcelona (concerts.cat)',
-                    'ciudad' => 'Barcelona',
-                    'genero' => 'Música',
-                    'url' => isset($row[2]) && str_starts_with($row[2], 'http') ? $row[2] : '',
-                ]);
-            }
+        if ($curDate === null || !($n instanceof DOMElement)) continue;
+        $href = $n->getAttribute('href');
+        if (isset($seen[$href])) continue;
+        $seen[$href] = true;
+
+        // tarjeta = el ancestro más grande que contiene solo ESTE evento
+        $card = $n;
+        for ($p = $n->parentNode; $p instanceof DOMElement && $p->nodeName !== 'body'; $p = $p->parentNode) {
+            $hrefs = [];
+            foreach ($xp->query($evq, $p) as $a) { $hrefs[$a->getAttribute('href')] = 1; }
+            if (count($hrefs) > 1) break;
+            $card = $p;
         }
-        logmsg('[src] concerts.cat parseados ~' . count($out) . " desde $url");
-        if ($out) break;
+        $texts = [];
+        foreach ($xp->query('.//text()', $card) as $t) {
+            $par = $t->parentNode ? $t->parentNode->nodeName : '';
+            if ($par === 'script' || $par === 'style') continue;
+            $x = trim((string)preg_replace('/\s+/u', ' ', (string)$t->nodeValue));
+            if ($x !== '') $texts[] = $x;
+        }
+        $i = null;
+        foreach ($texts as $k => $x) {
+            if (preg_match('/^(\d{1,2}:\d{2}|—|–|-)$/u', $x)) { $i = $k; break; }
+        }
+        if ($i === null || !isset($texts[$i + 1], $texts[$i + 2])) continue;
+
+        $hora = preg_match('/^(\d{1,2}):(\d{2})$/', $texts[$i], $hm) ? sprintf('%02d:%s', (int)$hm[1], $hm[2]) : '—';
+        $titulo = $texts[$i + 1];
+        $vc = $texts[$i + 2];
+        if (($texts[$i + 3] ?? '') === '/') {      // web real: <span>Sala</span><span>/</span><span>Ciudad</span>
+            $lugar = $vc;
+            $ciudad = $texts[$i + 4] ?? '';
+        } else {                                   // texto único "Sala/Ciudad"
+            $pos = strrpos($vc, '/');
+            $lugar = $pos === false ? $vc : trim(substr($vc, 0, $pos));
+            $ciudad = $pos === false ? '' : trim(substr($vc, $pos + 1));
+        }
+        if ($ciudad === '') $ciudad = '(ciudad desconocida)';
+        $url = str_starts_with($href, 'http') ? $href : 'https://concerts.cat' . $href;
+
+        $out[] = norm_event([
+            'fecha' => $curDate, 'hora' => $hora, 'titulo' => $titulo,
+            'lugar' => $lugar, 'ciudad' => $ciudad, 'genero' => 'Música',
+            'nota' => in_array('Gratis', $texts, true) ? 'Gratis' : '',
+            'url' => $url,
+        ]);
     }
+    return $out;
+}
+
+/** Eventos schema.org dentro de <script type="application/ld+json"> (sin regex: lineal y seguro) */
+function ldjson_events(string $html): array {
+    $out = [];
+    $pos = 0;
+    for ($n = 0; $n < 200; $n++) {
+        $i = stripos($html, 'application/ld+json', $pos);
+        if ($i === false) break;
+        $s = strpos($html, '>', $i);
+        if ($s === false) break;
+        $e = stripos($html, '</script>', $s);
+        if ($e === false) break;
+        $pos = $e + 9;
+        $d = json_decode(substr($html, $s + 1, $e - $s - 1), true);
+        if (is_array($d)) ld_collect($d, $out, 0);
+    }
+    return $out;
+}
+function ld_collect(array $node, array &$out, int $depth): void {
+    if ($depth > 6) return;
+    $type = $node['@type'] ?? null;
+    foreach (is_array($type) ? $type : [$type] as $t) {
+        if (is_string($t) && substr($t, -5) === 'Event') {
+            $ev = ld_to_event($node);
+            if ($ev !== null) $out[] = $ev;
+            break;
+        }
+    }
+    foreach ($node as $v) {
+        if (is_array($v)) ld_collect($v, $out, $depth + 1);
+    }
+}
+function ld_to_event(array $n): ?array {
+    $name = trim(html_entity_decode(strip_tags(sv($n['name'] ?? '')), ENT_QUOTES, 'UTF-8'));
+    if ($name === '' || !preg_match('/^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}))?/', sv($n['startDate'] ?? ''), $m)) return null;
+    $loc = $n['location'] ?? [];
+    if (is_array($loc) && isset($loc[0]) && is_array($loc[0])) $loc = $loc[0];
+    $lugar = is_array($loc) ? sv($loc['name'] ?? '') : sv($loc);
+    $addr = is_array($loc) ? ($loc['address'] ?? []) : [];
+    $ciudad = is_array($addr) ? sv($addr['addressLocality'] ?? '') : sv($addr);
+    $img = $n['image'] ?? '';
+    if (is_array($img)) { $f = reset($img); $img = is_array($f) ? ($f['url'] ?? '') : $f; }
+    return norm_event([
+        'fecha' => $m[1], 'hora' => $m[2] ?? '—', 'titulo' => $name,
+        'lugar' => $lugar, 'ciudad' => $ciudad, 'genero' => 'Música',
+        'url' => sv($n['url'] ?? ''), 'imagen' => sv($img),
+    ]);
+}
+
+/**
+ * Fuente A: concerts.cat (listado de Barcelona; si falla, el general filtrado por AMB).
+ * Todo lo que entra pasa por validación; nada raro llega al JSON.
+ */
+function source_concerts_cat(): array {
+    $bases = ['https://concerts.cat/es/barcelona', 'https://concerts.cat/es'];
+    $today = new DateTimeImmutable('today');
+    $from = $today->modify('-1 day')->format('Y-m-d');
+    $limit = $today->modify('+' . HORIZON_DAYS . ' days')->format('Y-m-d');
+    $out = [];
+    foreach ($bases as $base) {
+        $got = 0;
+        for ($page = 1; $page <= MAX_PAGES; $page++) {
+            $url = $page === 1 ? $base : $base . '?page=' . $page;
+            $html = http_get($url);
+            if ($html === '') {
+                logmsg("[src] concerts.cat vacío: $url");
+                break;
+            }
+            $ev = array_merge(ldjson_events($html), parse_cards($html));
+            $kept = 0;
+            $pastLimit = false;
+            foreach ($ev as $e) {
+                $f = $e['fecha'];
+                if (!valid_date($f) || $f < $from) continue;
+                if ($f > $limit) { $pastLimit = true; continue; }
+                if ($e['titulo'] === '' || is_junk_text($e['titulo']) || is_junk_text($e['lugar'])) continue;
+                $len = atiza_len($e['titulo']);
+                if ($len < 2 || $len > 110) continue;
+                if (!preg_match(AMB_RE, $e['ciudad'] . ' ' . $e['lugar'])) continue;
+                $out[event_key($e)] = $e;
+                $kept++;
+            }
+            logmsg("[src] concerts.cat $url: " . count($ev) . " leídos, $kept válidos");
+            $got += $kept;
+            if ($pastLimit || count($ev) === 0 || count($out) >= MAX_SCRAPED) break;
+            sleep(1);
+        }
+        if ($got > 0) break;
+    }
+    $out = array_values($out);
+    usort($out, fn($a, $b) => strcmp($a['fecha'] . $a['titulo'], $b['fecha'] . $b['titulo']));
+    if (count($out) > MAX_SCRAPED) $out = array_slice($out, 0, MAX_SCRAPED);
+    logmsg('[src] concerts.cat parseados ~' . count($out));
     return $out;
 }
 
@@ -138,7 +309,7 @@ function source_seed_bcn(): array {
     if (!is_readable($seedFile)) return [];
     $d = load_json($seedFile);
     logmsg('[src] seed local: ' . count($d) . ' ítems');
-    return array_map('norm_event', $d);
+    return array_map('norm_event', array_filter($d, 'is_array'));
 }
 
 // ----- main -----
@@ -146,11 +317,17 @@ logmsg('=== fetch conciertos start' . ($dry ? ' (dry-run)' : '') . ' ===');
 
 $current = load_json($DATA);
 if (!$current) $current = load_json($LEGACY);
-logmsg('actuales: ' . count($current));
+$antes = count($current);
+$current = array_values(array_filter($current, function ($e) {
+    if (!is_array($e)) return false;
+    return !is_junk_text(sv($e['titulo'] ?? $e['artista'] ?? '')) && !is_junk_text(sv($e['lugar'] ?? ''));
+}));
+logmsg('actuales: ' . count($current) . ($antes !== count($current) ? ' (purgadas ' . ($antes - count($current)) . ' entradas basura)' : ''));
 
 $incoming = [];
 foreach (array_merge(source_seed_bcn(), source_concerts_cat()) as $e) {
     if (($e['fecha'] ?? '') === '' || ($e['titulo'] ?? '') === '') continue;
+    if (is_junk_text($e['titulo']) || is_junk_text($e['lugar'] ?? '')) continue;
     $incoming[] = $e;
 }
 logmsg('entrantes brutos: ' . count($incoming));
@@ -183,6 +360,11 @@ $merged = array_values($map);
 usort($merged, fn($a, $b) => strcmp($a['fecha'] . $a['titulo'], $b['fecha'] . $b['titulo']));
 
 logmsg("merge: total=" . count($merged) . " añadidos=$added");
+
+if ($added > MAX_SCRAPED + 50) {
+    logmsg("ERROR: demasiados añadidos ($added): no escribo nada");
+    exit(2);
+}
 
 if ($dry) {
     logmsg('dry-run: no se escribe disco');
